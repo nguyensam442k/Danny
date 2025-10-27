@@ -1,9 +1,9 @@
 import { TF_TO_BINANCE, INDICATORS, RISK } from "./config.js";
 import { renderStats } from "./ui.js";
 
-// -------- Fetch klines (như cũ) ----------
+// -------- Fetch klines (Bybit) ----------
 async function fetchKlines({ symbol, timeframe, limit = 500 }) {
-  const interval = TF_TO_BINANCE[timeframe] || "15m";
+  const interval = TF_TO_BINANCE[timeframe] || "15m"; // map 15m/1h/4h -> 15/60/240 trong function
   const url = `/.netlify/functions/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
   const res = await fetch(url);
   if(!res.ok){ throw new Error(await res.text()); }
@@ -44,7 +44,7 @@ function ema(values, period){
 
 // -------- Generate signals: EMA cross ----------
 function generateSignals(closes, emaFast, emaSlow){
-  const signals = []; // {i, dir: 'long'|'short'}
+  const signals = [];
   for(let i=1;i<closes.length;i++){
     if(emaFast[i-1]==null || emaSlow[i-1]==null) continue;
     const prevDiff = emaFast[i-1]-emaSlow[i-1];
@@ -75,8 +75,7 @@ function backtest(bars, signals){
       sl = entry*(1+sl_pct);
     }
 
-    // duyệt nến tương lai tìm TP/SL chạm trước
-    let outcome = null; // 'win'|'loss'
+    let outcome = null;
     for(let j=s.i+1;j<bars.length;j++){
       const b = bars[j];
       if(dir==="long"){
@@ -87,19 +86,18 @@ function backtest(bars, signals){
         if(b.low<=tp){ outcome='win'; break; }
       }
     }
-    if(!outcome) continue; // bỏ qua nếu chưa chạm
+    if(!outcome) continue;
 
     trades++;
     if(outcome==='win'){
       wins++;
-      const move = tp_pct; // % theo entry
-      pnlUSD += contractsUSD * move / entry; // xấp xỉ USD PnL
+      const move = tp_pct;
+      pnlUSD += contractsUSD * move / entry;
       rrSum += tp_pct/sl_pct;
     }else{
       losses++;
       const move = sl_pct;
       pnlUSD -= contractsUSD * move / entry;
-      rrSum += 0;
     }
   }
 
@@ -108,7 +106,7 @@ function backtest(bars, signals){
   return { trades, wins, losses, winrate, pnlUSD, avgRR };
 }
 
-// -------- Main: render chart + overlays + stats ----------
+// -------- Main render ----------
 export async function loadAndRenderChart({ symbol, timeframe }) {
   const container = document.getElementById("chart");
   container.innerHTML = "";
@@ -123,43 +121,4 @@ export async function loadAndRenderChart({ symbol, timeframe }) {
   });
 
   const candleSeries = chart.addCandlestickSeries();
-  const bars = await fetchKlines({ symbol, timeframe, limit: 1000 });
-  candleSeries.setData(bars);
-
-  // indicators
-  const closes = bars.map(b => b.close);
-  const emaF = ema(closes, INDICATORS.emaFast);
-  const emaS = ema(closes, INDICATORS.emaSlow);
-  const sma50 = sma(closes, INDICATORS.sma);
-
-  const emaFastLine = chart.addLineSeries({ lineWidth: 2 });
-  const emaSlowLine = chart.addLineSeries({ lineWidth: 2 });
-  const smaLine     = chart.addLineSeries({ lineWidth: 1 });
-
-  emaFastLine.setData(bars.map((b, i) => ({ time: b.time, value: emaF[i] ?? null })));
-  emaSlowLine.setData(bars.map((b, i) => ({ time: b.time, value: emaS[i] ?? null })));
-  smaLine.setData(bars.map((b, i) => ({ time: b.time, value: sma50[i] ?? null })));
-
-  // signals + markers
-  const signals = generateSignals(closes, emaF, emaS);
-  const markers = signals.map(s => ({
-    time: bars[s.i].time,
-    position: s.dir==="long" ? "belowBar" : "aboveBar",
-    color: s.dir==="long" ? "#16a34a" : "#dc2626",
-    shape: s.dir==="long" ? "arrowUp" : "arrowDown",
-    text: s.dir==="long" ? "EMA Cross ↑" : "EMA Cross ↓",
-  }));
-  candleSeries.setMarkers(markers);
-
-  // backtest + stats
-  const stats = backtest(bars, signals);
-  renderStats(stats);
-
-  // info tag
-  const note = document.createElement("div");
-  note.style.position='absolute'; note.style.top='8px'; note.style.left='16px';
-  note.style.padding='4px 8px'; note.style.background='rgba(0,0,0,0.6)';
-  note.style.color='#fff'; note.style.borderRadius='6px'; note.style.fontSize='12px';
-  note.textContent = `${symbol} • ${timeframe} • EMA(${INDICATORS.emaFast}/${INDICATORS.emaSlow}) SMA(${INDICATORS.sma})`;
-  container.appendChild(note);
-}
+  const bars = await fetchKlines({ symbol, timeframe
