@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Signal Board — BTC/ETH</title>
+  <link rel="stylesheet" href="./assets/style.css" />
+  <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Signal Board (MVP) — BTC/ETH</div>
+    <div class="controls">
+      <label>Symbol <select id="symbol"></select></label>
+      <label>Timeframe <select id="timeframe"></select></label>
+      <button id="btn-refresh">Refresh</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="chart-wrap"><div id="chart" class="chart"></div></section>
+    <aside class="side">
+      <div class="box">
+        <h3>Ghi chú</h3>
+        <ul>
+          <li>BTCUSDT & ETHUSDT • 15m/1h/4h</li>
+          <li>Nguồn giá: Binance USDT-M Futures (proxy Netlify Function)</li>
+        </ul>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="footer">MVP • Step 1</footer>
+
+  <script type="module">
+    import { SYMBOLS, TIMEFRAMES } from './js/config.js';
+    import { initUI } from './js/ui.js';
+    import { loadAndRenderChart } from './js/chart.js';
+
+    const symbolSel = document.getElementById('symbol');
+    const tfSel = document.getElementById('timeframe');
+    const btn = document.getElementById('btn-refresh');
+
+    SYMBOLS.forEach(s => { const o = document.createElement('option'); o.value=o.textContent=s; symbolSel.appendChild(o); });
+    TIMEFRAMES.forEach(tf => { const o = document.createElement('option'); o.value=o.textContent=tf; tfSel.appendChild(o); });
+
+    initUI();
+    async function run(){ await loadAndRenderChart({ symbol:symbolSel.value, timeframe:tfSel.value }); }
+    btn.addEventListener('click', run); symbolSel.addEventListener('change', run); tfSel.addEventListener('change', run);
+    run();
+  </script>
+</body>
+</html>
