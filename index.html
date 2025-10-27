@@ -5,49 +5,61 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Signal Board — BTC/ETH</title>
   <link rel="stylesheet" href="./assets/style.css" />
+  <style>
+    .wrap { max-width: 1200px; margin: 16px auto; padding: 0 12px; }
+    .head { display:flex; align-items:center; justify-content:space-between; }
+    .head h1 { font-size:18px; margin:12px 0; }
+    .note { color:#444; font-size:13px; }
+    .controls { display:flex; gap:8px; align-items:center; }
+    .btn { padding:8px 12px; border:1px solid #ddd; background:#fff; border-radius:8px; cursor:pointer; }
+    .btn:hover { background:#f6f6f6; }
+    table { width:100%; border-collapse: collapse; margin-top:12px; }
+    th, td { padding:10px 12px; border-bottom:1px solid #eee; text-align:center; }
+    th { background:#fafafa; font-weight:600; }
+    .buy { color:#16a34a; font-weight:700; }
+    .sell { color:#dc2626; font-weight:700; }
+    .neutral { color:#6b7280; font-weight:600; }
+    .meta { font-size:12px; color:#6b7280; }
+  </style>
   <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">Signal Board (MVP) — BTC/ETH</div>
-    <div class="controls">
-      <label>Symbol <select id="symbol"></select></label>
-      <label>Timeframe <select id="timeframe"></select></label>
-      <button id="btn-refresh">Refresh</button>
-    </div>
-  </header>
-
-  <main class="layout">
-    <section class="chart-wrap"><div id="chart" class="chart"></div></section>
-    <aside class="side">
-      <div class="box">
-        <h3>Ghi chú</h3>
-        <ul>
-          <li>BTCUSDT & ETHUSDT • 15m/1h/4h</li>
-          <li>Nguồn giá: <b>Bybit USDT-M (linear)</b> (proxy Netlify Function)</li>
-        </ul>
+  <div class="wrap">
+    <div class="head">
+      <h1>Signal Board (MVP) — BTC/ETH</h1>
+      <div class="controls">
+        <button id="btn-refresh" class="btn">Refresh</button>
       </div>
-    </aside>
-  </main>
+    </div>
 
-  <footer class="footer">MVP • Step 1</footer>
+    <div class="note">
+      • Nguồn giá: CryptoCompare (Binance spot). • Tín hiệu: EMA(9/21) cross, tham khảo SMA50. • Khung: 15m/1h/4h.
+    </div>
+
+    <table id="sig-table">
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>15m</th>
+          <th>1h</th>
+          <th>4h</th>
+          <th>Last Price</th>
+          <th>Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- render bằng JS -->
+      </tbody>
+    </table>
+
+    <div class="meta" id="statusLine"></div>
+  </div>
 
   <script type="module">
-    import { SYMBOLS, TIMEFRAMES } from './js/config.js';
-    import { initUI } from './js/ui.js';
-    import { loadAndRenderChart } from './js/chart.js';
-
-    const symbolSel = document.getElementById('symbol');
-    const tfSel = document.getElementById('timeframe');
-    const btn = document.getElementById('btn-refresh');
-
-    SYMBOLS.forEach(s => { const o = document.createElement('option'); o.value=o.textContent=s; symbolSel.appendChild(o); });
-    TIMEFRAMES.forEach(tf => { const o = document.createElement('option'); o.value=o.textContent=tf; tfSel.appendChild(o); });
-
-    initUI();
-    async function run(){ await loadAndRenderChart({ symbol:symbolSel.value, timeframe:tfSel.value }); }
-    btn.addEventListener('click', run); symbolSel.addEventListener('change', run); tfSel.addEventListener('change', run);
-    run();
+    import { buildAndRun } from './js/signals.js';
+    const run = () => buildAndRun();
+    document.getElementById('btn-refresh').addEventListener('click', run);
+    run(); // auto load
   </script>
 </body>
 </html>
