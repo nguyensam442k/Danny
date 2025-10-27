@@ -1,12 +1,16 @@
 import { RISK } from "./config.js";
 
-/* ---------- helpers ---------- */
+/* ========== CONFIG ========== */
 const SYMS = ["BTCUSDT","ETHUSDT"];
 const CC = "https://min-api.cryptocompare.com/data/v2";
+const POSITION_USD = (RISK?.positionUSD ?? 100);
+const LEVER = (RISK?.leverage ?? 25);
+
+/* ========== UTILS ========== */
 const fmt = (x, d=2) => (typeof x === "number" ? x.toFixed(d) : x);
 const pct = (p) => (p>0?`+${(p*100).toFixed(2)}%`:`${(p*100).toFixed(2)}%`);
 
-async function fetchM15(symbol, limit=400){
+async function fetchM15(symbol, limit=500){
   const fsym = symbol.startsWith("BTC") ? "BTC" : "ETH";
   const url = `${CC}/histominute?fsym=${fsym}&tsym=USDT&limit=${limit}&aggregate=15&e=Binance`;
   const r = await fetch(url, { cache: "no-store" });
@@ -15,7 +19,6 @@ async function fetchM15(symbol, limit=400){
   return j.Data.Data.map(b=>({t:b.time,o:b.open,h:b.high,l:b.low,c:b.close}));
 }
 
-/* ---------- indicators ---------- */
 function sma(vals,p){ const out=Array(vals.length).fill(null); let s=0;
   for(let i=0;i<vals.length;i++){ s+=vals[i]; if(i>=p) s-=vals[i-p]; if(i>=p-1) out[i]=s/p; } return out; }
 function ema(vals,p){ const out=Array(vals.length).fill(null); const k=2/(p+1); let prev=null,seed=0;
@@ -40,11 +43,12 @@ function stoch(bars, kLen=14, dLen=3){ const kArr=Array(bars.length).fill(null);
     kArr[i]=100*(bars[i].c-l)/(h-l||1); }
   const dArr=sma(kArr.map(v=>v??0), dLen); return {k:kArr,d:dArr}; }
 function macd(vals, f=12, s=26, sig=9){ const ef=ema(vals,f), es=ema(vals,s);
-  const hist=vals.map((_,i)=> (ef[i]&&es[i]) ? (ef[i]-es[i]) : null);
-  const signal=ema(hist.map(v=>v??0), sig); return { macd: hist, signal, histo: hist.map((v,i)=> (v!=null && signal[i]!=null) ? v - signal[i] : null) }; }
+  const mac=vals.map((_,i)=> (ef[i]&&es[i]) ? (ef[i]-es[i]) : null);
+  const signal=ema(mac.map(v=>v??0), sig); const hist=mac.map((v,i)=> (v!=null && signal[i]!=null) ? v - signal[i] : null);
+  return { macd: mac, signal, histo: hist }; }
 
-/* ---------- signal logic ---------- */
-function lastCross(closes){ // EMA9/EMA21 cross gần nhất trong 30 nến
+/* ---------- detect last cross ---------- */
+function lastCross(closes){
   const e9=ema(closes,9), e21=ema(closes,21);
   for(let i=closes.length-1;i>=closes.length-30;i--){
     if(i<=0||e9[i-1]==null||e21[i-1]==null) continue;
@@ -55,47 +59,35 @@ function lastCross(closes){ // EMA9/EMA21 cross gần nhất trong 30 nến
   return null;
 }
 
-/* ---------- confidence scoring ---------- */
+/* ---------- confidence scoring (y như trước) ---------- */
 function confidence(bars, closes){
   const e50=ema(closes,50), e200=ema(closes,200);
   const m=macd(closes), r=rsi(closes), bbands=bb(closes), s=stoch(bars);
   const last=closes.length-1;
 
   let score=0, total=7;
-
-  // Trend EMA50 / EMA200 (2)
   if (closes[last]>e50[last]) score++; else score--;
   if (closes[last]>e200[last]) score++; else score--;
-
-  // MACD histogram (1)
   if ((m.histo[last]||0) > 0) score++; else score--;
-
-  // RSI zone (1)
-  if (r[last]>=55) score++; else if (r[last]<=45) score--; // trung tính không cộng
-
-  // Stoch (1)
+  if (r[last]>=55) score++; else if (r[last]<=45) score--;
   if ((s.k[last]||0) > (s.d[last]||0)) score++; else score--;
-
-  // Bollinger vị trí (1)
   if (bbands[last] && closes[last] >= bbands[last].mid) score++; else score--;
-
-  // Volume ratio (1) — giản lược: so sánh range nến hiện tại vs SMA(range)
   const ranges = bars.map(b => b.h - b.l), rngSma = sma(ranges, 20), ratio = (ranges[last]||0)/((rngSma[last]||1));
-  if (ratio >= 1) score++; // >1 coi như hoạt động “khá”
+  if (ratio >= 1) score++;
 
-  // convert to %
-  const conf = Math.max(0, Math.min(1, (score + total) / (2*total))) * 100; // scale 0..100
-  return { conf: Math.round(conf), rsi:r[last], macd:m, bb:bbands[last], stoch:{k:s.k[last], d:s.d[last]}, e50:e50[last], e200:e200[last], volRatio:ratio };
+  const conf = Math.max(0, Math.min(1, (score + total) / (2*total))) * 100;
+  return { conf: Math.round(conf), volRatio: ratio, e50:e50[last], e200:e200[last], rsi:r[last],
+           macd: m, bb: bbands[last], stoch:{k:s.k[last], d:s.d[last]} };
 }
 
-/* ---------- card builder ---------- */
+/* ---------- build UI card ---------- */
 function buildCard(sym, data){
   const el = document.createElement('div');
   el.className = 'card';
 
   const signCls = data.dir==="BUY" ? "buy" : "sell";
-  const pnlPct = (data.current - data.entry) / data.entry * (data.dir==="BUY"?1:-1); // long dương, short dương khi có lời
-  const pnlUSD = (RISK.positionUSD * RISK.leverage) * pnlPct;
+  const pnlPct = (data.current - data.entry) / data.entry * (data.dir==="BUY"?1:-1);
+  const pnlUSD = (POSITION_USD * LEVER) * pnlPct;
 
   el.innerHTML = `
     <div class="row head">
@@ -111,30 +103,12 @@ function buildCard(sym, data){
     </div>
 
     <div class="stat">
-      <div class="box">
-        <small>ENTRY</small>
-        <div>$${fmt(data.entry,2)}</div>
-      </div>
-      <div class="box">
-        <small>CURRENT</small>
-        <div>$${fmt(data.current,2)}</div>
-      </div>
-      <div class="box">
-        <small>TIME</small>
-        <div>${data.elapsed}</div>
-      </div>
-      <div class="box ${pnlPct>=0?'buy':'sell'}">
-        <small>P&L %</small>
-        <div>${pct(pnlPct)}</div>
-      </div>
-      <div class="box ${pnlPct>=0?'buy':'sell'}">
-        <small>PROFIT (25x)</small>
-        <div>$${fmt(pnlUSD,2)}</div>
-      </div>
-      <div class="box">
-        <small>STATUS</small>
-        <div class="chip" style="background:#1d4ed8;border-color:#60a5fa">ACTIVE</div>
-      </div>
+      <div class="box"><small>ENTRY</small><div>$${fmt(data.entry,2)}</div></div>
+      <div class="box"><small>CURRENT</small><div>$${fmt(data.current,2)}</div></div>
+      <div class="box"><small>TIME</small><div>15m</div></div>
+      <div class="box ${pnlPct>=0?'buy':'sell'}"><small>P&L %</small><div>${pct(pnlPct)}</div></div>
+      <div class="box ${pnlPct>=0?'buy':'sell'}"><small>PROFIT (25x)</small><div>$${fmt(pnlUSD,2)}</div></div>
+      <div class="box"><small>STATUS</small><div class="chip" style="background:#1d4ed8;border-color:#60a5fa">ACTIVE</div></div>
     </div>
 
     <div class="footer">
@@ -165,11 +139,103 @@ function buildCard(sym, data){
   return el;
 }
 
-/* ---------- main ---------- */
+/* ---------- backtest: thống kê thắng/thua ---------- */
+function firstHit(dir, bars, entry, sl, tp, startIdx, maxSteps){
+  // trả về "win" | "loss" | "flat"
+  for(let k=1; k<=maxSteps && startIdx+k < bars.length; k++){
+    const b = bars[startIdx+k];
+    if(dir==="BUY"){
+      // nếu nến có cả chạm SL lẫn TP, ưu tiên SL trước (bảo thủ)
+      if(b.l <= sl) return "loss";
+      if(b.h >= tp) return "win";
+    } else {
+      if(b.h >= sl) return "loss";
+      if(b.l <= tp) return "win";
+    }
+  }
+  return "flat";
+}
+
+function backtestSymbol(sym, bars){
+  const closes = bars.map(b=>b.c);
+  const e9 = ema(closes,9), e21 = ema(closes,21);
+  const atr14 = atr(bars,14);
+  const out = { sym, trades:0, win:0, loss:0, flat:0, pnlUSD:0 };
+
+  // quét toàn bộ cross, bỏ vùng seed
+  for(let i=30; i<bars.length-20; i++){
+    if(e9[i-1]==null || e21[i-1]==null) continue;
+    const prev = e9[i-1]-e21[i-1], now = e9[i]-e21[i];
+    let dir = null;
+    if(prev<=0 && now>0) dir="BUY";
+    if(prev>=0 && now<0) dir="SELL";
+    if(!dir) continue;
+
+    const entry = bars[i].c;
+    const atr = atr14[i] ?? 0;
+    const sl = dir==="BUY" ? entry - atr : entry + atr;
+    const tp = dir==="BUY" ? entry*(1+0.010) : entry*(1-0.010); // TP2 1.0%
+    const res = firstHit(dir, bars, entry, sl, tp, i, 16); // 16 nến = 4h
+
+    const notional = POSITION_USD * LEVER;
+    if(res==="win"){
+      out.win++; out.trades++;
+      out.pnlUSD += notional * (Math.abs(tp-entry)/entry);
+    }else if(res==="loss"){
+      out.loss++; out.trades++;
+      out.pnlUSD -= notional * (Math.abs(entry-sl)/entry);
+    }else{
+      out.flat++; out.trades++;
+      // flat = 0$
+    }
+  }
+  return out;
+}
+
+function renderSummary(perSym){
+  const tbl = document.getElementById('sum-table');
+  const note = document.getElementById('sum-note');
+
+  const total = perSym.reduce((a,b)=>({
+    trades:a.trades+b.trades, win:a.win+b.win, loss:a.loss+b.loss, flat:a.flat+b.flat, pnlUSD:a.pnlUSD+b.pnlUSD
+  }), {trades:0,win:0,loss:0,flat:0,pnlUSD:0});
+
+  const row = (r,name)=> {
+    const wr = r.trades ? (r.win/r.trades*100).toFixed(1) : "0.0";
+    const pnlCls = r.pnlUSD>=0 ? "green":"red";
+    return `<tr>
+      <td><b>${name}</b></td>
+      <td>${r.trades}</td>
+      <td class="green">${r.win}</td>
+      <td class="red">${r.loss}</td>
+      <td>${r.flat}</td>
+      <td>${wr}%</td>
+      <td class="${pnlCls}">$${fmt(r.pnlUSD,2)}</td>
+    </tr>`;
+  };
+
+  tbl.innerHTML = `
+    <thead>
+      <tr>
+        <th>Symbol</th><th>Trades</th><th>Win</th><th>Loss</th><th>Flat</th><th>Win-rate</th><th>P&amp;L ($)</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${perSym.map(s=>row(s, s.sym.replace('USDT',''))).join('')}
+      <tr><td colspan="7" style="border-bottom:none"></td></tr>
+      ${row(total, "TOTAL")}
+    </tbody>
+  `;
+  note.textContent = "Backtest ~500 nến m15 / mỗi cặp";
+}
+
+/* ---------- main render ---------- */
 export async function renderM15(){
   const root = document.getElementById('cards');
   const status = document.getElementById('status');
   root.innerHTML = ""; status.textContent = "Loading…";
+
+  const perSymStats = [];
 
   for(const sym of SYMS){
     try{
@@ -177,77 +243,69 @@ export async function renderM15(){
       const now = bars.at(-1).t;
       const closes = bars.map(b=>b.c);
 
+      // ---- card hiện tại ----
       const cross = lastCross(closes);
-      if(!cross){ // không có tín hiệu mới
-        const el=document.createElement('div');
-        el.className='card';
-        el.innerHTML=`<div class="muted">${sym}: No recent EMA(9/21) cross found.</div>`;
-        root.appendChild(el);
-        continue;
+      if(cross){
+        const idx=cross.idx, dir=cross.dir;
+        const entry=bars[idx].c, current=bars.at(-1).c;
+        const atr14 = atr(bars,14).at(-1);
+        const sl = dir==="BUY" ? entry-atr14 : entry+atr14;
+        const tp1 = dir==="BUY" ? entry*(1+0.006) : entry*(1-0.006);
+        const tp2 = dir==="BUY" ? entry*(1+0.010) : entry*(1-0.010);
+        const tp3 = dir==="BUY" ? entry*(1+0.014) : entry*(1-0.014);
+
+        const e12 = ema(closes,12).at(-1), e26 = ema(closes,26).at(-1);
+        const e50 = ema(closes,50).at(-1), e200 = ema(closes,200).at(-1);
+        const m = macd(closes);
+        const r = rsi(closes).at(-1);
+        const k = stoch(bars); const kLast=k.k.at(-1), dLast=k.d.at(-1);
+        const bb20 = bb(closes).at(-1);
+        const s20 = sma(closes,20).at(-1);
+
+        const confObj = confidence(bars, closes);
+        const risk = Math.abs(entry - sl);
+        const reward = Math.abs(tp2 - entry);
+        const rr = reward / (risk||1);
+
+        const sinceSec = Math.max(0, bars.at(-1).t - bars[idx].t);
+        const leftSec = Math.max(0, 4*3600 - sinceSec);
+        const human = (secs)=>`${Math.floor(secs/3600)}h ${Math.floor((secs%3600)/60)}m`;
+        const left = human(leftSec);
+
+        const bull = dir==="BUY";
+        const summary =
+          `Step 1: ${bull?'Bullish':'Bearish'} EMA cross at $${fmt(entry)}. ` +
+          `Step 2: ${bb20 ? `Price ${closes.at(-1) >= bb20.mid ? 'above' : 'near'} BB mid` : 'BB flat'}. ` +
+          `Step 3: Trend ${current>e50?'STRONG_BULL':'MIXED'}, EMA50 ${fmt(e50)} / EMA200 ${fmt(e200)}. ` +
+          `Step 4: RSI ${fmt(r)}. Step 5: MACD hist ${fmt(m.histo.at(-1),4)}. ` +
+          `Step 6: Volume ratio ${fmt(confObj.volRatio,2)}.`;
+
+        const card = buildCard(sym, {
+          dir, entry, current,
+          sl, tp1, tp2, tp3,
+          rr,
+          now,
+          left,
+          conf: confObj.conf,
+          ema12:e12, ema26:e26, e50, e200,
+          rsi:r, macd:m.macd.at(-1), macdSig:m.signal.at(-1), macdHist:m.histo.at(-1),
+          sma20:s20, stochK:kLast, stochD:dLast,
+          support: bb20?.low, resist: bb20?.up, breakout: bb20?.mid,
+          volRatio: confObj.volRatio,
+          summary
+        });
+        root.appendChild(card);
+      }else{
+        const div=document.createElement('div');
+        div.className='card';
+        div.innerHTML=`<div class="muted">${sym}: No recent EMA(9/21) cross found.</div>`;
+        root.appendChild(div);
       }
 
-      const idx = cross.idx, dir=cross.dir;
-      const entry = bars[idx].c;
-      const current = bars.at(-1).c;
-      const atr14 = atr(bars,14).at(-1);
-      const sl = dir==="BUY" ? entry - atr14 : entry + atr14;
+      // ---- thống kê ----
+      const st = backtestSymbol(sym, bars);
+      perSymStats.push(st);
 
-      // targets
-      const tp1 = dir==="BUY" ? entry*(1+0.006) : entry*(1-0.006);
-      const tp2 = dir==="BUY" ? entry*(1+0.010) : entry*(1-0.010);
-      const tp3 = dir==="BUY" ? entry*(1+0.014) : entry*(1-0.014);
-
-      // indicators for details
-      const e12 = ema(closes,12).at(-1), e26 = ema(closes,26).at(-1);
-      const e50 = ema(closes,50).at(-1), e200 = ema(closes,200).at(-1);
-      const m = macd(closes);
-      const r = rsi(closes).at(-1);
-      const k = stoch(bars); const kLast=k.k.at(-1), dLast=k.d.at(-1);
-      const bb20 = bb(closes).at(-1);
-      const s20 = sma(closes,20).at(-1);
-
-      // confidence
-      const confObj = confidence(bars, closes);
-
-      // RR (khoảng cách tới TP2 so với SL)
-      const risk = Math.abs(entry - sl);
-      const reward = Math.abs(tp2 - entry);
-      const rr = reward / (risk||1);
-
-      // time info
-      const sinceSec = Math.max(0, bars.at(-1).t - bars[idx].t);
-      const leftSec = Math.max(0, 4*3600 - sinceSec); // 4h expiry
-      const human = (secs)=>`${Math.floor(secs/3600)}h ${Math.floor((secs%3600)/60)}m left`;
-      const elapsed = `${Math.floor(sinceSec/60)}m`;
-      const left = human(leftSec);
-
-      // summary (rút gọn)
-      const bull = dir==="BUY";
-      const summary =
-        `Step 1: ${bull?'Bullish':'Bearish'} EMA cross detected at $${fmt(entry)}. ` +
-        `Step 2: ${bb20 ? `Price ${closes.at(-1) >= bb20.mid ? 'above' : 'near'} BB mid` : 'BB flat'}. ` +
-        `Step 3: Trend ${current>e50?'STRONG_BULL':'MIXED'}, EMA50 ${fmt(e50)} / EMA200 ${fmt(e200)}. ` +
-        `Step 4: RSI ${fmt(r)} ${r<40?'oversold':''}${r>60?' overbought':''}. ` +
-        `Step 5: MACD histogram ${fmt(m.histo.at(-1),4)} ${m.histo.at(-1)>0?'bullish':'bearish'}. ` +
-        `Step 6: Volume ratio ${fmt(confObj.volRatio,2)} ` +
-        `→ Bias ${bull?'buy dips':'sell rallies'}.`;
-
-      const card = buildCard(sym, {
-        dir, entry, current,
-        sl, tp1, tp2, tp3,
-        rr,
-        now,
-        elapsed,
-        left,
-        conf: confObj.conf,
-        ema12:e12, ema26:e26, e50, e200,
-        rsi:r, macd:m.macd.at(-1), macdSig:m.signal.at(-1), macdHist:m.histo.at(-1),
-        sma20:s20, stochK:kLast, stochD:dLast,
-        support: bb20?.low, resist: bb20?.up, breakout: bb20?.mid,
-        volRatio: confObj.volRatio,
-        summary
-      });
-      root.appendChild(card);
     }catch(e){
       const err=document.createElement('div');
       err.className='card';
@@ -257,13 +315,6 @@ export async function renderM15(){
     }
   }
 
+  renderSummary(perSymStats);
   status.textContent = "Done • Data: CryptoCompare • m15 only";
-}
-
-/* ------------- config fallback (nếu bạn chưa có) ------------- */
-if (!RISK) {
-  // đề phòng thiếu config.js
-  console.warn("config.js RISK missing → use default");
-  // eslint-disable-next-line no-global-assign
-  RISK = { positionUSD: 100, leverage: 25 };
 }
