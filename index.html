@@ -1,76 +1,111 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="vi">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Signals • m15 (BTC/ETH)</title>
-  <link rel="stylesheet" href="./assets/style.css"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Signal Board — m15 (BTC/ETH)</title>
+  <link rel="stylesheet" href="./assets/style.css" />
   <style>
-    :root{--bg:#0b1220;--card:#0f172a;--muted:#94a3b8;--good:#16a34a;--bad:#dc2626;--chip:#1e293b}
-    body{margin:0;background:#0b1220;color:#e2e8f0;font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial}
-    .wrap{max-width:1100px;margin:24px auto;padding:0 16px}
-    .title{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
-    .title h1{margin:0;font-size:20px}
-    .note{color:#94a3b8;font-size:13px;margin-bottom:18px}
-
-    .sumcard{background:var(--card);border:1px solid #1f2a44;border-radius:14px;padding:14px 16px;margin-bottom:14px}
-    .sumhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-    .sumtbl{width:100%;border-collapse:collapse}
-    .sumtbl th,.sumtbl td{padding:10px 8px;border-bottom:1px dashed #20314d;text-align:right}
-    .sumtbl th:first-child,.sumtbl td:first-child{text-align:left}
-    .green{color:var(--good)} .red{color:var(--bad)}
-
-    .grid{display:grid;grid-template-columns:1fr;gap:14px}
-    @media(min-width:880px){.grid{grid-template-columns:1fr 1fr}}
-    .card{background:var(--card);border:1px solid #1f2a44;border-radius:14px;padding:14px 16px}
-    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-    .head{justify-content:space-between}
-    .coin{display:flex;gap:10px;align-items:center}
-    .badge{font-weight:700;padding:4px 10px;border-radius:999px;background:#1e293b}
-    .buy{color:var(--good)} .sell{color:var(--bad)}
-    .stat{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-top:10px}
-    .box{background:#0b1220;border:1px solid #1f2a44;border-radius:10px;padding:10px;text-align:center}
-    .box small{display:block;color:var(--muted);font-size:12px;margin-bottom:4px}
-    .chip{background:var(--chip);padding:6px 10px;border-radius:999px;border:1px solid #20314d;font-size:12px}
-    .footer{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:12px}
-    button{cursor:pointer;background:#0b5cff;border:1px solid #3b82f6;color:#fff;border-radius:10px;padding:8px 12px}
-    .tps{display:flex;gap:8px;flex-wrap:wrap}
-    .tp{background:#0b1220;border:1px solid #1f2a44;border-radius:10px;padding:8px 10px;color:#e2e8f0}
-    .muted{color:var(--muted)}
-    details{margin-top:12px}
-    summary{cursor:pointer;color:#cbd5e1}
-    .tbl{width:100%;border-collapse:collapse;margin-top:8px}
-    .tbl td{border-bottom:1px dashed #20314d;padding:8px 4px;font-size:14px}
-    .right{text-align:right}
+    .panel { background:#0d1117; border:1px solid #1f2633; border-radius:12px; padding:16px; margin:16px 0; }
+    .panel-title { font-size:18px; font-weight:700; margin-bottom:10px; }
+    .toolbar { display:flex; gap:8px; margin-bottom:10px; }
+    .table { width:100%; border-collapse: collapse; }
+    .table th,.table td { padding:10px 12px; border-bottom:1px solid #1f2633; text-align:left; }
+    .table thead th { color:#9fb3c8; font-weight:600; border-bottom:1px solid #293447; }
+    .green { color:#2ecc71; } .red { color:#ff6262; }
+    .btn { background:#1f6feb; color:#fff; padding:8px 12px; border-radius:8px; border:none; cursor:pointer; }
+    .btn-outline { background:transparent; border:1px solid #2f3b50; color:#9fb3c8; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+    @media(max-width: 960px){ .grid{ grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="title">
-      <h1>Signal Board — m15 (BTC/ETH)</h1>
-      <button id="btn-refresh">Refresh</button>
+  <main class="container" style="max-width:1200px; margin:0 auto; padding:24px">
+
+    <div style="display:flex; align-items:center; gap:12px; justify-content:space-between">
+      <h1 style="margin:0">Signal Board — m15 (BTC/ETH)</h1>
+      <button id="btn-refresh" class="btn">Refresh</button>
     </div>
 
-    <!--  NEW: khối thống kê  -->
-    <div id="summary" class="sumcard">
-      <div class="sumhead">
-        <div><b>Tổng hợp thống kê</b> (backtest nhanh với TP2, SL 1×ATR14, expiry 4h)</div>
-        <span class="note" id="sum-note"></span>
+    <!-- ======== TỔNG HỢP LIVE (từ journal) ======== -->
+    <section class="panel">
+      <div class="panel-title">Tổng hợp thống kê (LIVE)</div>
+      <div id="summary-live"></div>
+      <div style="font-size:12px; color:#9fb3c8; margin-top:6px">
+        Ghi lệnh khi có tín hiệu; tính P&amp;L theo 100U × 25, TP/SL/Expiry 4h (giống khối lệnh).
       </div>
-      <table class="sumtbl" id="sum-table"></table>
-    </div>
+    </section>
 
-    <div class="note">Nguồn: CryptoCompare (Binance spot) • Tín hiệu: EMA(9/21) cross • SL: 1×ATR(14) • TP: 0.6%/1.0%/1.4% • Vốn: $100 × 25x • Hết hạn lệnh: 4h</div>
+    <!-- ======== 2 CARD tín hiệu (bạn vẫn render như cũ) ======== -->
+    <section class="grid" id="cards-root">
+      <!-- nơi UI hiện 2 card của BTC/ETH như bạn đã làm -->
+    </section>
 
-    <div class="grid" id="cards"></div>
-    <div class="note" id="status"></div>
-  </div>
+    <!-- ======== LỊCH SỬ LỆNH ======== -->
+    <section class="panel">
+      <div class="panel-title">Lịch sử lệnh</div>
+      <div class="toolbar">
+        <button id="btn-export" class="btn-outline">Export CSV</button>
+        <button id="btn-clear" class="btn-outline">Xóa lịch sử (giữ lệnh ACTIVE)</button>
+      </div>
+      <table id="hist-table" class="table">
+        <thead>
+          <tr>
+            <th>Time</th><th>Sym</th><th>Dir</th><th>Entry</th><th>TP</th><th>SL</th>
+            <th>Exit</th><th>Reason</th><th>Status</th><th>P&amp;L ($)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
 
+  </main>
+
+  <!-- Vùng script: giữ nguyên các file bạn đã có -->
+  <script type="module" src="./js/journal.js"></script>
+  <!-- ui.js của bạn (đã có từ trước) phải load SAU journal.js -->
   <script type="module">
-    import { renderM15 } from './js/m15_cards.js';
-    const run = () => renderM15();
-    document.getElementById('btn-refresh').addEventListener('click', run);
-    run();
+    // ===== CHỈ THÊM: hook các nút hiển thị từ journal =====
+    import { loadJournal, saveJournal, renderSummaryTable, renderHistoryTable } from './js/journal.js';
+
+    // Export CSV
+    document.getElementById('btn-export').onclick = () => {
+      const j = loadJournal().filter(x => x.status !== 'ACTIVE');
+      const rows = [
+        ['Time','Sym','Dir','Entry','TP','SL','Exit','Reason','Status','PnLUSD'],
+        ...j.map(x => [
+          new Date(x.exitAt||x.createdAt).toISOString(),
+          x.sym, x.dir, x.entry, x.tp, x.sl, x.exitPx, x.reason, x.status, x.pnl
+        ])
+      ];
+      const csv = rows.map(r=>r.join(',')).join('\n');
+      const blob = new Blob([csv], {type:'text/csv'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'journal.csv';
+      a.click();
+    };
+
+    // Xóa toàn bộ lệnh đã kết thúc
+    document.getElementById('btn-clear').onclick = () => {
+      const keepActive = loadJournal().filter(x => x.status === 'ACTIVE');
+      saveJournal(keepActive);
+      renderSummaryTable();
+      renderHistoryTable();
+    };
+
+    // Nút refresh chung (gọi refresh() của UI cũ — nếu bạn đã có)
+    const btn = document.getElementById('btn-refresh');
+    btn?.addEventListener('click', () => {
+      // Tùy app của bạn; qua đây chỉ để click cho sướng :)
+      // Bạn vẫn gọi refresh() ở file ui.js của bạn như cũ.
+      window.dispatchEvent(new Event('app:refresh'));
+    });
+
+    // Lần đầu vào: vẽ summary & history
+    renderSummaryTable();
+    renderHistoryTable();
   </script>
+  <script type="module" src="./js/ui.js"></script>
 </body>
 </html>
