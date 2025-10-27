@@ -1,13 +1,13 @@
 import { TF_TO_BINANCE as TF_MAP_UI, INDICATORS, RISK } from "./config.js";
 import { renderStats } from "./ui.js";
 
-/** ==================== DATA FETCH ==================== */
-// Ưu tiên gọi Netlify Function; nếu lỗi (403/404/5xx) thì fallback Bybit trực tiếp.
+/* ============================== FETCH =============================== */
+// 1) cố gọi Netlify Function; 2) fallback Bybit; 3) fallback CryptoCompare
 async function fetchKlines({ symbol, timeframe, limit = 500 }) {
-  // 1) Thử Netlify Function (dùng tham số 15m/1h/4h)
+  // -------- 1) Netlify function (nếu còn hoạt động) --------
   try {
     const urlFn = `/.netlify/functions/klines?symbol=${symbol}&interval=${timeframe}&limit=${limit}`;
-    const r = await fetch(urlFn);
+    const r = await fetch(urlFn, { cache: "no-store" });
     if (r.ok) {
       const d = await r.json();
       return d.map(k => ({
@@ -15,27 +15,51 @@ async function fetchKlines({ symbol, timeframe, limit = 500 }) {
         open: +k[1], high: +k[2], low: +k[3], close: +k[4],
       }));
     }
-  } catch (_) { /* bỏ qua, fallback phía dưới */ }
+  } catch (_) {}
 
-  // 2) Fallback: Bybit v5 (linear USDT perp) — gọi trực tiếp, không cần proxy
-  const MAP_BYBIT = { "15m": "15", "1h": "60", "4h": "240" };
-  const iv = MAP_BYBIT[timeframe] || "15";
-  const url = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${iv}&limit=${limit}`;
+  // -------- 2) Bybit v5 (linear perp) trực tiếp --------
+  try {
+    const MAP_BYBIT = { "15m": "15", "1h": "60", "4h": "240" };
+    const iv = MAP_BYBIT[timeframe] || "15";
+    const url = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${iv}&limit=${limit}`;
+    const r = await fetch(url, { cache: "no-store" });
+    if (r.ok) {
+      const j = await r.json();
+      if (j.retCode === 0) {
+        const list = (j.result?.list || []).slice().reverse();
+        return list.map(row => ({
+          time: Math.floor(Number(row[0]) / 1000),
+          open: +row[1], high: +row[2], low: +row[3], close: +row[4],
+        }));
+      }
+    }
+  } catch (_) {}
 
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(await res.text());
-  const j = await res.json();
-  if (j.retCode !== 0) throw new Error(j.retMsg || "bybit error");
+  // -------- 3) CryptoCompare (không cần key) --------
+  // map: 15m -> histominute aggregate=15; 1h -> histohour agg=1; 4h -> histohour agg=4
+  const CC_BASE = "https://min-api.cryptocompare.com/data/v2";
+  const fsym = symbol.startsWith("BTC") ? "BTC" : "ETH";
+  const tsym = "USDT";
+  let url;
+  if (timeframe === "15m") {
+    url = `${CC_BASE}/histominute?fsym=${fsym}&tsym=${tsym}&limit=${limit}&aggregate=15&e=Binance`;
+  } else if (timeframe === "1h") {
+    url = `${CC_BASE}/histohour?fsym=${fsym}&tsym=${tsym}&limit=${limit}&aggregate=1&e=Binance`;
+  } else { // 4h
+    url = `${CC_BASE}/histohour?fsym=${fsym}&tsym=${tsym}&limit=${limit}&aggregate=4&e=Binance`;
+  }
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(await r.text());
+  const j = await r.json();
+  if (j.Response !== "Success") throw new Error(j.Message || "cryptocompare error");
 
-  // Bybit trả newest-first -> đảo lại oldest-first
-  const list = (j.result?.list || []).slice().reverse();
-  return list.map(row => ({
-    time: Math.floor(Number(row[0]) / 1000),
-    open: +row[1], high: +row[2], low: +row[3], close: +row[4],
+  // CC trả oldest-first (Data.Data)
+  return j.Data.Data.map(b => ({
+    time: b.time, open: b.open, high: b.high, low: b.low, close: b.close,
   }));
 }
 
-/** ==================== INDICATORS ==================== */
+/* ============================ INDICATORS ============================ */
 function sma(values, period){
   const out = new Array(values.length).fill(null);
   let sum = 0;
@@ -74,7 +98,7 @@ function generateSignals(closes, emaFast, emaSlow){
   return signals;
 }
 
-/** ==================== SIMPLE BACKTEST ==================== */
+/* ============================= BACKTEST ============================= */
 function backtest(bars, signals){
   const { positionUSD, leverage, tp_pct, sl_pct } = RISK;
   const contractsUSD = positionUSD * leverage;
@@ -84,7 +108,6 @@ function backtest(bars, signals){
   for (const s of signals){
     const entry = bars[s.i].close;
     const dir = s.dir;
-
     const tp = dir==="long" ? entry*(1+tp_pct) : entry*(1-tp_pct);
     const sl = dir==="long" ? entry*(1-sl_pct) : entry*(1+sl_pct);
 
@@ -103,21 +126,17 @@ function backtest(bars, signals){
 
     trades++;
     if (outcome==='win'){
-      wins++;
-      pnlUSD += (contractsUSD * tp_pct) / entry;
-      rrSum += tp_pct/sl_pct;
+      wins++; pnlUSD += (contractsUSD * tp_pct) / entry; rrSum += tp_pct/sl_pct;
     } else {
-      losses++;
-      pnlUSD -= (contractsUSD * sl_pct) / entry;
+      losses++; pnlUSD -= (contractsUSD * sl_pct) / entry;
     }
   }
-
   const winrate = trades ? wins/trades : 0;
   const avgRR = trades ? rrSum/trades : 0;
   return { trades, wins, losses, winrate, pnlUSD, avgRR };
 }
 
-/** ==================== RENDER ==================== */
+/* ============================== RENDER ============================== */
 export async function loadAndRenderChart({ symbol, timeframe }) {
   const container = document.getElementById("chart");
   container.innerHTML = "";
@@ -164,6 +183,8 @@ export async function loadAndRenderChart({ symbol, timeframe }) {
   note.style.position='absolute'; note.style.top='8px'; note.style.left='16px';
   note.style.padding='4px 8px'; note.style.background='rgba(0,0,0,0.6)';
   note.style.color='#fff'; note.style.borderRadius='6px'; note.style.fontSize='12px';
-  note.textContent = `${symbol} • ${timeframe} • Bybit Perp • EMA(${INDICATORS.emaFast}/${INDICATORS.emaSlow}) SMA(${INDICATORS.sma})`;
+  note.textContent = `${symbol} • ${timeframe} • Data: Bybit/CryptoCompare • EMA(${INDICATORS.emaFast}/${INDICATORS.emaSlow}) SMA(${INDICATORS.sma})`;
   container.appendChild(note);
+}
+
 }
