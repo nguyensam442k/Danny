@@ -12,6 +12,14 @@
     .title{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
     .title h1{margin:0;font-size:20px}
     .note{color:#94a3b8;font-size:13px;margin-bottom:18px}
+
+    .sumcard{background:var(--card);border:1px solid #1f2a44;border-radius:14px;padding:14px 16px;margin-bottom:14px}
+    .sumhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .sumtbl{width:100%;border-collapse:collapse}
+    .sumtbl th,.sumtbl td{padding:10px 8px;border-bottom:1px dashed #20314d;text-align:right}
+    .sumtbl th:first-child,.sumtbl td:first-child{text-align:left}
+    .green{color:var(--good)} .red{color:var(--bad)}
+
     .grid{display:grid;grid-template-columns:1fr;gap:14px}
     @media(min-width:880px){.grid{grid-template-columns:1fr 1fr}}
     .card{background:var(--card);border:1px solid #1f2a44;border-radius:14px;padding:14px 16px}
@@ -42,7 +50,18 @@
       <h1>Signal Board — m15 (BTC/ETH)</h1>
       <button id="btn-refresh">Refresh</button>
     </div>
+
+    <!--  NEW: khối thống kê  -->
+    <div id="summary" class="sumcard">
+      <div class="sumhead">
+        <div><b>Tổng hợp thống kê</b> (backtest nhanh với TP2, SL 1×ATR14, expiry 4h)</div>
+        <span class="note" id="sum-note"></span>
+      </div>
+      <table class="sumtbl" id="sum-table"></table>
+    </div>
+
     <div class="note">Nguồn: CryptoCompare (Binance spot) • Tín hiệu: EMA(9/21) cross • SL: 1×ATR(14) • TP: 0.6%/1.0%/1.4% • Vốn: $100 × 25x • Hết hạn lệnh: 4h</div>
+
     <div class="grid" id="cards"></div>
     <div class="note" id="status"></div>
   </div>
