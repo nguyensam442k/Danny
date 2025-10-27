@@ -2,64 +2,56 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Signal Board — BTC/ETH</title>
-  <link rel="stylesheet" href="./assets/style.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Signals • m15 (BTC/ETH)</title>
+  <link rel="stylesheet" href="./assets/style.css"/>
   <style>
-    .wrap { max-width: 1200px; margin: 16px auto; padding: 0 12px; }
-    .head { display:flex; align-items:center; justify-content:space-between; }
-    .head h1 { font-size:18px; margin:12px 0; }
-    .note { color:#444; font-size:13px; }
-    .controls { display:flex; gap:8px; align-items:center; }
-    .btn { padding:8px 12px; border:1px solid #ddd; background:#fff; border-radius:8px; cursor:pointer; }
-    .btn:hover { background:#f6f6f6; }
-    table { width:100%; border-collapse: collapse; margin-top:12px; }
-    th, td { padding:10px 12px; border-bottom:1px solid #eee; text-align:center; }
-    th { background:#fafafa; font-weight:600; }
-    .buy { color:#16a34a; font-weight:700; }
-    .sell { color:#dc2626; font-weight:700; }
-    .neutral { color:#6b7280; font-weight:600; }
-    .meta { font-size:12px; color:#6b7280; }
+    :root{--bg:#0b1220;--card:#0f172a;--muted:#94a3b8;--good:#16a34a;--bad:#dc2626;--chip:#1e293b}
+    body{margin:0;background:#0b1220;color:#e2e8f0;font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial}
+    .wrap{max-width:1100px;margin:24px auto;padding:0 16px}
+    .title{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+    .title h1{margin:0;font-size:20px}
+    .note{color:#94a3b8;font-size:13px;margin-bottom:18px}
+    .grid{display:grid;grid-template-columns:1fr;gap:14px}
+    @media(min-width:880px){.grid{grid-template-columns:1fr 1fr}}
+    .card{background:var(--card);border:1px solid #1f2a44;border-radius:14px;padding:14px 16px}
+    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    .head{justify-content:space-between}
+    .coin{display:flex;gap:10px;align-items:center}
+    .badge{font-weight:700;padding:4px 10px;border-radius:999px;background:#1e293b}
+    .buy{color:var(--good)} .sell{color:var(--bad)}
+    .stat{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-top:10px}
+    .box{background:#0b1220;border:1px solid #1f2a44;border-radius:10px;padding:10px;text-align:center}
+    .box small{display:block;color:var(--muted);font-size:12px;margin-bottom:4px}
+    .chip{background:var(--chip);padding:6px 10px;border-radius:999px;border:1px solid #20314d;font-size:12px}
+    .footer{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:12px}
+    button{cursor:pointer;background:#0b5cff;border:1px solid #3b82f6;color:#fff;border-radius:10px;padding:8px 12px}
+    .tps{display:flex;gap:8px;flex-wrap:wrap}
+    .tp{background:#0b1220;border:1px solid #1f2a44;border-radius:10px;padding:8px 10px;color:#e2e8f0}
+    .muted{color:var(--muted)}
+    details{margin-top:12px}
+    summary{cursor:pointer;color:#cbd5e1}
+    .tbl{width:100%;border-collapse:collapse;margin-top:8px}
+    .tbl td{border-bottom:1px dashed #20314d;padding:8px 4px;font-size:14px}
+    .right{text-align:right}
   </style>
-  <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
   <div class="wrap">
-    <div class="head">
-      <h1>Signal Board (MVP) — BTC/ETH</h1>
-      <div class="controls">
-        <button id="btn-refresh" class="btn">Refresh</button>
-      </div>
+    <div class="title">
+      <h1>Signal Board — m15 (BTC/ETH)</h1>
+      <button id="btn-refresh">Refresh</button>
     </div>
-
-    <div class="note">
-      • Nguồn giá: CryptoCompare (Binance spot). • Tín hiệu: EMA(9/21) cross, tham khảo SMA50. • Khung: 15m/1h/4h.
-    </div>
-
-    <table id="sig-table">
-      <thead>
-        <tr>
-          <th>Symbol</th>
-          <th>15m</th>
-          <th>1h</th>
-          <th>4h</th>
-          <th>Last Price</th>
-          <th>Updated</th>
-        </tr>
-      </thead>
-      <tbody>
-        <!-- render bằng JS -->
-      </tbody>
-    </table>
-
-    <div class="meta" id="statusLine"></div>
+    <div class="note">Nguồn: CryptoCompare (Binance spot) • Tín hiệu: EMA(9/21) cross • SL: 1×ATR(14) • TP: 0.6%/1.0%/1.4% • Vốn: $100 × 25x • Hết hạn lệnh: 4h</div>
+    <div class="grid" id="cards"></div>
+    <div class="note" id="status"></div>
   </div>
 
   <script type="module">
-    import { buildAndRun } from './js/signals.js';
-    const run = () => buildAndRun();
+    import { renderM15 } from './js/m15_cards.js';
+    const run = () => renderM15();
     document.getElementById('btn-refresh').addEventListener('click', run);
-    run(); // auto load
+    run();
   </script>
 </body>
 </html>
