@@ -1,0 +1,11 @@
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,Arial,sans-serif;color:#0b1221;background:#f7f8fb}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#0b1221;color:#fff}
+.brand{font-weight:700}
+.controls label{margin-right:12px;font-size:14px}
+.controls select,.controls button{margin-left:6px;padding:6px 8px}
+.layout{display:grid;grid-template-columns:1fr 320px;gap:16px;padding:16px}
+.chart-wrap{background:#fff;border-radius:12px;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,.06);position:relative}
+.chart{height:520px}
+.side .box{background:#fff;border-radius:12px;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.footer{padding:12px 16px;text-align:center;color:#6b7280;font-size:13px}
